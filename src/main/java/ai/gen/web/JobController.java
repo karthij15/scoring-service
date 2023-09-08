@@ -1,11 +1,14 @@
 package ai.gen.web;
 
+import ai.gen.model.JobStatus;
 import ai.gen.request.JobRequest;
 import ai.gen.service.JobService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @RestController
@@ -57,6 +60,12 @@ public class JobController {
         } else {
             return "Job " + jobName + " is not yet completed or doesn't exist.";
         }
+    }
+
+    @GetMapping("/all")
+    public List<JobStatus> getAllJobStatuses() {
+        // Retrieve all job statuses from the JobService
+        return service.getAllJobStatuses();
     }
 
     private String generateUniqueJobName() {
