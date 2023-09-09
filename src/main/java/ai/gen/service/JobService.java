@@ -7,6 +7,7 @@ import ai.gen.utils.FractionRatioConverter;
 import ai.gen.utils.RatingAggregator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.springframework.http.*;
@@ -40,8 +41,12 @@ public class JobService {
 
     private final String TRANSLATE_ENDPOINT = "http://localhost:5000/translate_text";
     private final String SCORE_TITLE_ENDPOINT = "http://localhost:5000/score_title";
-    private final String SCORE_DESCRIPTION_ENDPOINT = "http://localhost:5000//score_product_description";
+    private final String SCORE_DESCRIPTION_ENDPOINT = "http://localhost:5000/score_product_description";
 
+    private final String IMAGE_ANALYZER_ENDPOINT = "http://localhost:8040/check/images/quality";
+
+    private final String GEN_TITLE_ENDPOINT = "http://localhost:5000/generate_title";
+    private final String GEN_DESC_ENDPOINT = "http://localhost:5000/generate_product_description";
     private final RestTemplate restTemplate;
 
     private final ObjectMapper mapper;
@@ -218,14 +223,35 @@ public class JobService {
 
             if (titleSection.equalsIgnoreCase("Overall")) {
                 tileOverAllScore = FractionRatioConverter.convertToRatio(titleScoreObj.getJSONArray("data").getJSONObject(idx).optString("Score"));
-            } else {
-                reasonData.setReason(titleScoreObj.getJSONArray("data").getJSONObject(idx).optString("Reason"));
-                reasonData.setTitle(titleScoreObj.getJSONArray("data").getJSONObject(idx).optString("Section_Title"));
-                reasonData.setScore(titleScoreObj.getJSONArray("data").getJSONObject(idx).optString("Score"));
-                reasonList.add(reasonData);
             }
+
+            reasonData.setReason(titleScoreObj.getJSONArray("data").getJSONObject(idx).optString("Reason"));
+            reasonData.setTitle(titleScoreObj.getJSONArray("data").getJSONObject(idx).optString("Section_Title"));
+            reasonData.setScore(titleScoreObj.getJSONArray("data").getJSONObject(idx).optString("Score"));
+            reasonList.add(reasonData);
         }
         titleAttr.setIssues(reasonList);
+
+        CompletableFuture<String> imageAnalysisScore = performImageAnalysis(scrapeResultObj.optJSONArray("images"));
+
+        while (imageAnalysisScore.isDone()) {
+            System.out.println("image analysis is not yet completed. Polling...");
+
+            // Add a delay between polls (you can adjust the delay as needed)
+            try {
+                TimeUnit.SECONDS.sleep(1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        String imgScoreResponse = imageAnalysisScore.get();
+        JSONObject imgScoreJson = new JSONObject();
+        try {
+            imgScoreJson = new JSONObject(imgScoreResponse);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         JobData.AttributeData descAttr = new JobData.AttributeData();
         descAttr.setName("description");
@@ -242,23 +268,51 @@ public class JobService {
 
             if (descSection.equalsIgnoreCase("Overall")) {
                 descOverAllScore = FractionRatioConverter.convertToRatio(descScoreObj.getJSONArray("data").getJSONObject(idx).optString("Score"));
-            } else {
-                reasonData.setReason(descScoreObj.getJSONArray("data").getJSONObject(idx).optString("Reason"));
-                reasonData.setTitle(descScoreObj.getJSONArray("data").getJSONObject(idx).optString("Section_Title"));
-                reasonData.setScore(descScoreObj.getJSONArray("data").getJSONObject(idx).optString("Score"));
-                reasonList.add(reasonData);
             }
+            reasonData.setReason(descScoreObj.getJSONArray("data").getJSONObject(idx).optString("Reason"));
+            reasonData.setTitle(descScoreObj.getJSONArray("data").getJSONObject(idx).optString("Section_Title"));
+            reasonData.setScore(descScoreObj.getJSONArray("data").getJSONObject(idx).optString("Score"));
+            reasonList.add(reasonData);
         }
         descAttr.setIssues(reasonList);
+
+        JobData.AttributeData imgAttr = new JobData.AttributeData();
+        imgAttr.setName("Image Quality Analysis");
+        imgAttr.setValue(imgScoreJson.optString("image_count", "0") + " images were found!");
+
+        JobData.ReasonData imgResReason = new JobData.ReasonData();
+        int imgResScore = imgScoreJson.optInt("images_res_score", 0);
+        String imgResScoreRating = RatingAggregator.calculateRating(imgResScore);
+
+        imgResReason.setScore(imgResScoreRating);
+        imgResReason.setTitle("Image Resolution Analysis");
+        imgResReason.setReason((imgResScore < 8 ? "Low quality images found" : "No Issues Found"));
+
+        JobData.ReasonData imgCountReason = new JobData.ReasonData();
+        int imgCountScore = imgScoreJson.optInt("images_count_score", 0);
+        String imgCountScoreRating = imgCountScore < 1 ? "2.5/5" : "5/5";
+
+        imgCountReason.setScore(imgCountScoreRating);
+        imgCountReason.setTitle("Image Resolution Analysis");
+        imgCountReason.setReason(imgCountScore == 2 ? "No issues found": "Very few images");
+
+        String imgScoreRating = RatingAggregator.aggregateRatings(List.of(imgResScoreRating, imgCountScoreRating));
+
+        List<JobData.ReasonData> imgReasons = new ArrayList<>();
+        imgReasons.add(imgResReason);
+        imgReasons.add(imgCountReason);
+        imgAttr.setIssues(imgReasons);
 
         List<JobData.AttributeData> coAttr = new ArrayList<>();
         coAttr.add(titleAttr);
         coAttr.add(descAttr);
+        coAttr.add(imgAttr);
 
         JobData.ListingData coData = new JobData.ListingData();
         coData.setAttributes(coAttr);
-        String coScore = RatingAggregator.aggregateRatings(List.of(tileOverAllScore, descOverAllScore));
+        String coScore = RatingAggregator.aggregateRatings(List.of(tileOverAllScore, descOverAllScore, imgScoreRating));
         coData.setScore(coScore);
+
 
         listings.put("content-observability", coData);
 
@@ -309,6 +363,40 @@ public class JobService {
 
     }
 
+    private CompletableFuture<String> performImageAnalysis(JSONArray itemUrls) {
+
+        return CompletableFuture.supplyAsync(() -> {
+            // Simulate API call with different processing times
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+
+                JSONObject requestObj = new JSONObject();
+                requestObj.put("urls", itemUrls);
+                String requestBody = requestObj.toString();
+                // Create a POST request with the given request body and headers
+
+                HttpEntity<String> requestEntity = new HttpEntity<>(requestBody, headers);
+
+                ResponseEntity<String> responseEntity = restTemplate.exchange(
+                        IMAGE_ANALYZER_ENDPOINT,
+                        HttpMethod.POST,
+                        requestEntity,
+                        String.class
+                );
+
+
+                if (responseEntity.getStatusCode() == HttpStatus.OK) {
+                    return responseEntity.getBody();
+                } else {
+                    return "API Call failed for " + IMAGE_ANALYZER_ENDPOINT + " with status code: " + responseEntity.getStatusCode();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                return "API Call failed for " + IMAGE_ANALYZER_ENDPOINT;
+            }
+        });
+    }
 
 
     private CompletableFuture<String> performScrape(String itemUrl) {
@@ -460,5 +548,147 @@ public class JobService {
     public String getJobResult(String jobName) {
         // Get the job result from the map
         return jobResultMap.getOrDefault(jobName, "Result not available");
+    }
+
+    @Async
+    public void genTitle(String jobName, String text) {
+
+        CompletableFuture<String> generateAi = getGenAiTitle(text);
+
+        while (generateAi.isDone() && generateAi.isDone()) {
+            System.out.println("scraping and pricing is not yet completed. Polling...");
+
+            // Add a delay between polls (you can adjust the delay as needed)
+            try {
+                TimeUnit.SECONDS.sleep(1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        try {
+            JobData jobData = (new ObjectMapper()).readValue(jobResultMap.get(jobName), JobData.class);
+            List<JobData.AttributeData> attributeDataList = jobData.getListings().get("content-observability").getAttributes();
+            for (JobData.AttributeData attr : attributeDataList) {
+                if (attr.getName().equals("item-name")) {
+                    attr.setGenerated(generateAi.get());
+                }
+            }
+
+            ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
+            try {
+                jobResultMap.put(jobName, ow.writeValueAsString(jobData));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+
+        }
+
+    }
+
+    @Async
+    public void genDesc(String jobName, String text) {
+
+        CompletableFuture<String> generateAi = getGenAiDesc(text);
+
+        while (generateAi.isDone() && generateAi.isDone()) {
+            System.out.println("scraping and pricing is not yet completed. Polling...");
+
+            // Add a delay between polls (you can adjust the delay as needed)
+            try {
+                TimeUnit.SECONDS.sleep(1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        try {
+            JobData jobData = (new ObjectMapper()).readValue(jobResultMap.get(jobName), JobData.class);
+            List<JobData.AttributeData> attributeDataList = jobData.getListings().get("content-observability").getAttributes();
+            for (JobData.AttributeData attr : attributeDataList) {
+                if (attr.getName().equals("description")) {
+                    attr.setGenerated(generateAi.get());
+                }
+            }
+
+            ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
+            try {
+                jobResultMap.put(jobName, ow.writeValueAsString(jobData));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+
+        }
+
+    }
+
+    private CompletableFuture<String> getGenAiTitle(String text) {
+        return CompletableFuture.supplyAsync(() -> {
+            // Simulate API call with different processing times
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+
+                JSONObject requestObj = new JSONObject();
+                requestObj.put("input", text);
+                String requestBody = requestObj.toString();
+                // Create a POST request with the given request body and headers
+
+                HttpEntity<String> requestEntity = new HttpEntity<>(requestBody, headers);
+
+                ResponseEntity<String> responseEntity = restTemplate.exchange(
+                        GEN_TITLE_ENDPOINT,
+                        HttpMethod.POST,
+                        requestEntity,
+                        String.class
+                );
+
+
+                if (responseEntity.getStatusCode() == HttpStatus.OK) {
+                    return responseEntity.getBody();
+                } else {
+                    return "API Call failed for " + GEN_TITLE_ENDPOINT + " with status code: " + responseEntity.getStatusCode();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                return "API Call failed for " + GEN_TITLE_ENDPOINT;
+            }
+        });
+    }
+
+    private CompletableFuture<String> getGenAiDesc(String text) {
+        return CompletableFuture.supplyAsync(() -> {
+            // Simulate API call with different processing times
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+
+                JSONObject requestObj = new JSONObject();
+                requestObj.put("input", text);
+                String requestBody = requestObj.toString();
+                // Create a POST request with the given request body and headers
+
+                HttpEntity<String> requestEntity = new HttpEntity<>(requestBody, headers);
+
+                ResponseEntity<String> responseEntity = restTemplate.exchange(
+                        GEN_DESC_ENDPOINT,
+                        HttpMethod.POST,
+                        requestEntity,
+                        String.class
+                );
+
+
+                if (responseEntity.getStatusCode() == HttpStatus.OK) {
+                    return responseEntity.getBody();
+                } else {
+                    return "API Call failed for " + GEN_DESC_ENDPOINT + " with status code: " + responseEntity.getStatusCode();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                return "API Call failed for " + GEN_DESC_ENDPOINT;
+            }
+        });
     }
 }

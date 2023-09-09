@@ -15,7 +15,7 @@ public class AppUtils {
         return response;
     }
 
-    public static String convertRatingToString(int rating) {
+    public static String convertRatingToString(Double rating) {
 //        if (rating < 0 || rating > 5) {
 //            throw new IllegalArgumentException("Rating must be between 0 and 5.");
 //        }
@@ -29,17 +29,17 @@ public class AppUtils {
         }
     }
 
-    public static int extractNumerator(String fraction) {
+    public static Double extractNumerator(String fraction) {
         String[] parts = fraction.split("/");
         if (parts.length != 2) {
-            return 1;
+            return 1.0d;
         }
 
         try {
-            return Integer.parseInt(parts[0]);
+            return Double.parseDouble(parts[0]);
         } catch (NumberFormatException e) {
             e.printStackTrace();
-            return 1;
+            return 1.0d;
         }
     }
 }

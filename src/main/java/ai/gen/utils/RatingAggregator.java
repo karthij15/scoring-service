@@ -31,7 +31,7 @@ public class RatingAggregator {
                     throw new IllegalArgumentException("Denominator must be a multiple of 5.");
                 }
 
-                totalNumerator += numerator * (denominator / 5); // Adjust numerator based on denominator
+                totalNumerator += numerator; // Adjust numerator based on denominator
                 totalDenominator += denominator;
             } catch (ArrayIndexOutOfBoundsException | IllegalArgumentException e) {
                 // Handle invalid rating formats, missing parts, or invalid denominators
@@ -40,7 +40,8 @@ public class RatingAggregator {
         }
 
         // Calculate the average and format it as a string out of 5
-        double average = totalNumerator / totalDenominator;
+        int ratio = (int)Math.round(totalDenominator)/5;
+        double average = (totalNumerator/ratio);
         String aggregatedRating = String.format("%.1f/5", average);
 
         return aggregatedRating;
@@ -67,9 +68,28 @@ public class RatingAggregator {
         }
 
         double score = (double) betterCompetitorsCount / numberOfCompetitors * 5;
+
+        if (score == 0.0) {
+            score = 1.0;
+        }
         String formattedScore = String.format("%.1f/5", score);
 
         return formattedScore;
+    }
+
+    public static String calculateRating(int userRating) {
+        // Assuming your rating calculation logic here, e.g., mapping userRating to a 5-star scale
+        // You can replace this logic with your actual rating computation
+        int maxRating = 8;
+        int maxStars = 5;
+
+        // Calculate the rating on a 5-star scale
+        int scaledRating = (int) Math.round((double) userRating / maxRating * maxStars);
+
+        // Ensure the scaled rating is within the 1 to 5 range
+        scaledRating = Math.max(1, Math.min(5, scaledRating));
+
+        return scaledRating + "/5";
     }
 
 }

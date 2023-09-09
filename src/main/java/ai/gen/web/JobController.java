@@ -1,6 +1,7 @@
 package ai.gen.web;
 
 import ai.gen.model.JobStatus;
+import ai.gen.request.TextRequest;
 import ai.gen.request.JobRequest;
 import ai.gen.service.JobService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,7 +9,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @RestController
@@ -41,6 +41,20 @@ public class JobController {
         service.processJobAsync(jobName, jobRequest.getItemUrl());
 
         return "Job created with name: " + jobName;
+    }
+
+    @PostMapping("/generate/item/{jobName}")
+    public String genTitle(@PathVariable String jobName,
+                           @RequestBody TextRequest jobRequest) {
+        service.genTitle(jobName, jobRequest.getText());
+        return "Job created to generate title " + jobName;
+    }
+
+    @PostMapping("/generate/description/{jobName}")
+    public String genDesc(@PathVariable String jobName,
+                          @RequestBody TextRequest jobRequest) {
+        service.genDesc(jobName, jobRequest.getText());
+        return "Job created to generate Desc";
     }
 
     @GetMapping("/status/{jobName}")

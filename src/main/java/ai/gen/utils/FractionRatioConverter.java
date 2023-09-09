@@ -11,8 +11,8 @@ public class FractionRatioConverter {
         }
 
         try {
-            int numerator = Integer.parseInt(parts[0]);
-            int denominator = Integer.parseInt(parts[1]);
+            int numerator = (int)Math.round(Double.parseDouble(parts[0]));
+            int denominator = (int)Math.round(Double.parseDouble(parts[1]));
 
             // Calculate the greatest common divisor (GCD) of the numerator and denominator
             int gcd = gcd(numerator, denominator);

@@ -124,6 +124,16 @@ public class JobData {
     public static class AttributeData {
         private String name;
         private String value;
+
+        public String getGenerated() {
+            return generated;
+        }
+
+        public void setGenerated(String generated) {
+            this.generated = generated;
+        }
+
+        private String generated;
         private List<ReasonData> issues;
 
         public String getName() {
