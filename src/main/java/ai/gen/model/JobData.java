@@ -74,6 +74,16 @@ public class JobData {
         private String score;
         private List<AttributeData> attributes;
 
+        public List<String> getData() {
+            return data;
+        }
+
+        public void setData(List<String> data) {
+            this.data = data;
+        }
+
+        private List<String> data;
+
         public String getScore() {
             return score;
         }

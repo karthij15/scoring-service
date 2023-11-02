@@ -210,7 +210,8 @@ public class JobService {
 
         JobData.AttributeData titleAttr = new JobData.AttributeData();
         titleAttr.setName("item-name");
-        titleAttr.setValue(translatedTitleStr);
+//        titleAttr.setValue(translatedTitleStr);
+        titleAttr.setValue(scrapeResultObj.getString("title"));
 
         List<JobData.ReasonData> reasonList = new ArrayList<>();
 
@@ -255,7 +256,8 @@ public class JobService {
 
         JobData.AttributeData descAttr = new JobData.AttributeData();
         descAttr.setName("description");
-        descAttr.setValue(translatedDescStr);
+//        descAttr.setValue(translatedDescStr);
+        descAttr.setValue(scrapeResultObj.getString("description"));
 
         List<JobData.ReasonData> reasonDescList = new ArrayList<>();
 
@@ -338,6 +340,21 @@ public class JobService {
         priceData.setScore(priceScore);
 
         listings.put("offering", priceData);
+
+        JobData.ListingData imageInfoData = new JobData.ListingData();
+        List<String> imgList = new ArrayList<>();
+        JSONArray scrapeImgArray = scrapeResultObj.optJSONArray("images");
+        if (scrapeImgArray != null && scrapeImgArray.length() > 0) {
+            for (int idx = 0; idx < scrapeImgArray.length(); idx++) {
+                imgList.add(scrapeImgArray.getString(idx));
+            }
+        }
+        imageInfoData.setData(imgList);
+        List<JobData.AttributeData> imageAttrList = new ArrayList<>();
+        imageInfoData.setAttributes(imageAttrList);
+        imageInfoData.setScore("5/5");
+
+        listings.put("image", imageInfoData);
 
         responseData.setListings(listings);
 
